@@ -256,7 +256,7 @@ Dacă salvarea eșuează, mesajul indică faptul că schimbarea rămâne valabil
 
 ## Verificări și limite
 
-Compilarea LuaJIT/Lua 5.1 și **86 de verificări offline** au trecut: evenimentele, +150 ms pentru copiere/AI, anularea răspunsurilor, cheia copiată lungă, salvarea/reîncărcarea, formatele de autentificare și răspuns Claude/OpenAI/Groq/local, lipsa cheii cloud în cererile locale și erorile de configurare.
+Compilarea LuaJIT/Lua 5.1 și **86 de verificări offline** au trecut: evenimentele, anularea răspunsurilor, cheia copiată lungă, salvarea/reîncărcarea, formatele de autentificare și răspuns Claude/OpenAI/Groq/local, lipsa cheii cloud în cererile locale și erorile de configurare.
 
 API-urile au fost simulate în teste. Nu au fost efectuate apeluri plătite și modulul nu a fost rulat efectiv în GTA pe Windows. Nu înseamnă compatibilitate universală cu orice serviciu sau orice model: sunt implementate cele cinci variante de mai sus.
 
