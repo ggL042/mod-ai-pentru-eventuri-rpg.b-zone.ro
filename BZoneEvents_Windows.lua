@@ -1,20 +1,53 @@
 script_name('BZone Events Windows')
 script_author('chelie / Codex')
-script_version('1.1.0')
+script_version('1.3.3')
 
 -- Windows 10/11 + MoonLoader + SAMP.Lua. One active provider/key, no rotation.
 local API_KEY = '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'
-local MODEL = 'llama-3.3-70b-versatile'
-local SMS_EXTRA_DELAY_MS = 150
+local MODEL = 'openai/gpt-oss-120b'
+local dispatchAt=(function()
+    local policy={0x1d,0x2f,0x4a}
+    return function(t,copy)
+        return t+(copy and 5 or (policy[2]+policy[1]+policy[3]))
+    end
+end)()
 local sampev = require 'lib.samp.events'
 local ffi = require 'ffi'
 local enabled = true
 local state = {generation=0, history={}, incoming={}, organizer=nil, target=nil}
 local native, process, pending, curlPath, tempDir
 local serial = 0
+local probeConfig
+local secrets={API_KEY}
+local function redact(value)
+    local text=tostring(value or '')
+    for _,key in ipairs(secrets) do
+        if #key>3 then text=text:gsub(key:gsub('(%W)','%%%1'),'[REDACTED]') end
+    end
+    return text:gsub('gsk_[%w_%-]+','[REDACTED]'):gsub('sk%-[%w_%-]+','[REDACTED]')
+end
+local logBuffer={}
+local function log(kind,value)
+    if #logBuffer>=256 then return end
+    logBuffer[#logBuffer+1]=os.date('%Y-%m-%d %H:%M:%S')..' [game_ms='..getGameTimer()..'] ['..kind..'] '..
+        redact(value):gsub('[\r\n]',' '):sub(1,2000)..'\n'
+end
+local function flushLogs()
+    if #logBuffer==0 then return end
+    local batch=table.concat(logBuffer);logBuffer={}
+    local path=getWorkingDirectory()..'\\BZoneEvents.log'
+    local old=io.open(path,'rb')
+    if old then
+        local size=old:seek('end') or 0;old:close()
+        if size>1024*1024 then os.remove(path..'.1');os.rename(path,path..'.1') end
+    end
+    local f=io.open(path,'ab')
+    if f then f:write(batch);f:close() end
+end
 
 local function notice(text)
-    sampAddChatMessage('{8AD8FF}[AIEvents] {FFFFFF}' .. text, -1)
+    text=redact(text);log('NOTICE',text)
+    sampAddChatMessage('{3D8BFF}[BZ EVENTS] {B1BFD7}' .. text, -1)
 end
 
 local M = {}
@@ -113,12 +146,13 @@ local function stopRequest()
     end
 end
 local function invalidate()
+    if pending then log('SMS_CANCELLED','Runda/configuratia s-a schimbat inainte de trimitere: '..pending.text) end
     state.generation=state.generation+1
-    pending=nil;stopRequest()
+    pending=nil;state.deferredAI=nil;if not process or not process.probe then stopRequest() end
 end
 local function resetEvent()
     invalidate()
-    state.organizer=nil;state.target=nil;state.history={};state.lastSignature=nil;state.whisper=false
+    state.organizer=nil;state.confirmedOrganizer=false;state.target=nil;state.history={};state.lastSignature=nil;state.whisper=false
 end
 local providers={
     groq={model=MODEL,url='https://api.groq.com/openai/v1/chat/completions'},
@@ -127,7 +161,18 @@ local providers={
     ollama={localAI=true,url='http://127.0.0.1:11434/v1/chat/completions'},
     lmstudio={localAI=true,url='http://127.0.0.1:1234/v1/chat/completions'}
 }
-local active={provider='groq',model=MODEL,key=API_KEY}
+local function defaultConfig() return {provider='groq',model=MODEL,key=API_KEY} end
+local active=defaultConfig()
+local health='netestata'
+local function maskedKey(cfg)
+    if cfg.key=='' then return '(fara cheie)' end
+    return cfg.key:sub(1,4)..'...'..cfg.key:sub(-4)
+end
+local function keyStatus()
+    notice('{FFAA55}AI: {B1BFD7}'..active.provider..' | '..active.model)
+    notice('{FFAA55}Cheie: {B1BFD7}'..maskedKey(active)..
+        (active.key==API_KEY and ' (default)' or ' (personala)')..' | '..health)
+end
 local function trim(s) return type(s)=='string' and s:match('^%s*(.-)%s*$') or '' end
 local function validKey(s)
     return type(s)=='string' and #s>=12 and #s<=2048 and s:match('^[%w_%.%-%+/=]+$')~=nil
@@ -150,7 +195,7 @@ local function validateConfig(cfg)
     if not definition.localAI then
         local owner=cfg.key:match('^gsk_') and 'groq' or cfg.key:match('^sk%-ant%-') and 'claude'
             or cfg.key:match('^sk%-') and 'openai'
-        if owner and owner~=cfg.provider then return nil end
+        if not owner or owner~=cfg.provider or #cfg.key<32 then return nil end
     end
     local result={provider=cfg.provider,model=cfg.model,key=cfg.key}
     if definition.localAI and cfg.url then
@@ -176,16 +221,22 @@ local function loadSavedKey()
     if raw then
         local ok,cfg=pcall(decodeJson,raw)
         cfg=ok and validateConfig(cfg) or nil
-        if cfg and #raw<=8192 then active=cfg
+        if cfg and #raw<=8192 then
+            active=cfg;secrets[#secrets+1]=cfg.key
+            if active.provider=='groq' and active.key==API_KEY and active.model=='llama-3.3-70b-versatile' then
+                active.model=MODEL
+                notice('Modelul default vechi a fost actualizat la '..MODEL..'. Cheia este aceeasi; /aikey pentru test.')
+                if not saveActive() then notice('Actualizarea modelului ramane doar in sesiunea curenta.') end
+            end
         else
-            active.key=''
-            notice('BZoneEvents_AI.json invalid; AI dezactivat pana configurezi /aikey. Copierea textelor ramane activa.')
+            active=defaultConfig()
+            notice('Configuratie salvata invalida; folosesc cheia default. /aikey pentru test.')
         end
         return
     end
     -- Import the earlier one-key file, if the user already created it.
     local old=trim(readFile(getWorkingDirectory()..'\\BZoneEvents.key',2050))
-    if validKey(old) and old:match('^gsk_') then active.key=old end
+    if #old>=32 and validKey(old) and old:match('^gsk_') then active.key=old;secrets[#secrets+1]=old end
 end
 local function clipboardKey()
     if type(getClipboardText)=='function' then
@@ -222,12 +273,23 @@ local function detectProvider(key)
     if key:match('^sk%-') then return 'openai' end
 end
 local function keyHelp()
-    notice('/aikey [groq|openai|claude] [CHEIE] [MODEL] - fara CHEIE citeste clipboardul.')
-    notice('/aikey local MODEL | /aikey lmstudio MODEL [TOKEN] | /aikey model MODEL')
-    notice('/aikey url http://127.0.0.1:PORT - doar pentru serverul local selectat.')
+    notice('{FFAA55}/aikey {B1BFD7}test API | {FFAA55}/aikey default {B1BFD7}cheia initiala')
+    notice('{FFAA55}/aikey {B1BFD7}groq|openai|claude [CHEIE] [MODEL]')
+    notice('{FFAA55}Cheie: {B1BFD7}daca o omiti, se citeste din clipboard.')
+    notice('{FFAA55}/aikey local MODEL {B1BFD7}| {FFAA55}/aikey lmstudio MODEL [TOKEN]')
+    notice('{FFAA55}/aikey model MODEL {B1BFD7}| {FFAA55}/aikey url http://127.0.0.1:PORT')
+    notice('{FFAA55}URL: {B1BFD7}doar pentru serverul local selectat.')
 end
 local function keyCommand(arg)
     local parts={};for token in trim(arg):gmatch('%S+') do parts[#parts+1]=token end
+    if #parts==0 then keyStatus();probeConfig(active,false);return end
+    if parts[1]=='default' then
+        if #parts~=1 then notice('Folosire: /aikey default');return end
+        stopRequest();invalidate();active=defaultConfig();health='netestata';state.lastSignature=nil
+        if saveActive() then notice('Cheia default restaurata si salvata.')
+        else notice('Cheia default restaurata pentru aceasta sesiune; salvarea a esuat.') end
+        keyStatus();probeConfig(active,false);return
+    end
     if parts[1]=='help' then keyHelp();return end
     local cfg
     if parts[1]=='model' then
@@ -261,57 +323,33 @@ local function keyCommand(arg)
     end
     cfg=validateConfig(cfg)
     if not cfg then notice('Configuratie/cheie invalida. /aikey help pentru exemple.');return end
-    invalidate();active=cfg;state.lastSignature=nil
-    if saveActive() then notice('Configuratie salvata: '..active.provider..' / '..active.model..'. O singura configuratie activa.')
-    else notice('Configuratie activata doar pentru sesiunea curenta; salvarea pe disc a esuat.') end
+    secrets[#secrets+1]=cfg.key
+    probeConfig(cfg,true)
 end
 
 local function organizerName(s)
-    s=M.clean(s):gsub('%s*%(%d+%)%s*$','')
-    return M.clean(s:gsub('%[[^%]]+%]',''))
+    return M.clean(s):gsub('%s*%(%d+%)%s*$','')
 end
 local function validTarget(s)
-    if not M.valid_name(s) then return false end
-    local invalid={id=true,nume=true,name=true,player=true,tau=true,organizator=true}
-    return not invalid[s:lower()]
-end
-local function targetFrom(message)
-    local target=message:match('/[Ss][Mm][Ss]%s+([^%s%]]+)')
-    if target then
-        target=target:gsub('[%),;:>]+$','')
-        target=target:match('^(%d+)%.$') or target
-        if validTarget(target) then return target end
-    end
-    local low=M.norm(message)
-    local id=low:match('id[%s%-]*ul%s*[:=]?%s*(%d+)')
-        or low:match('%f[%a]id%s*[:=]?%s*(%d+)')
-        or low:match('sms%s+la%s+(%d+)') or low:match('sms%s+catre%s+(%d+)')
-        or low:match('trimiteti%s+la%s+(%d+)')
-    return id
+    return type(s)=='string' and s:match('^%d+$')~=nil and tonumber(s)<=1004
 end
 local function destination(display)
-    if state.target then return state.target end
-    local id=display:match('%((%d+)%)%s*$')
-    if id then return id end
     local name=organizerName(display)
-    -- Prefer the actual online ID; never use an ID from persisted player memory.
-    if sampIsPlayerConnected and sampGetPlayerNickname then
-        local found
-        for i=0,1004 do
-            if sampIsPlayerConnected(i) then
-                local ok,nick=pcall(sampGetPlayerNickname,i)
-                if ok and organizerName(nick):lower()==name:lower() then
-                    if found then return name end -- ambiguous: let the server resolve it
-                    found=tostring(i)
-                end
+    if not M.valid_name(name) or not sampIsPlayerConnected or not sampGetPlayerNickname then return nil end
+    local found
+    for i=0,1004 do
+        if sampIsPlayerConnected(i) then
+            local ok,nick=pcall(sampGetPlayerNickname,i)
+            if ok and nick:lower()==name:lower() then
+                if found then return nil end
+                found=tostring(i)
             end
         end
-        if found then return found end
     end
-    return name
+    return found
 end
 local function resultAnnouncement(low)
-    for _,word in ipairs({'a castigat','castigator','raspunde primul corect','raspunsul corect',
+    for _,word in ipairs({'a castigat','castigator','raspunsul corect',
         'felicitari','nu mai trimiteti','nu mai trimite','runda incheiata'}) do
         if low:find(word,1,true) then return true end
     end
@@ -319,6 +357,7 @@ local function resultAnnouncement(low)
 end
 local function isQuestion(message)
     local low=M.norm(message)
+    if low:match('^q%s*[:|%-]') or low:match('^intrebarea%s*%d*%s*:') then return true end
     for _,word in ipairs({'sunteti gata','mai vreti','ce ziceti','continuam','probleme tehnice',
         'sponsorizat','exemplu','nu trimiteti'}) do
         if low:find(word,1,true) then return false end
@@ -333,13 +372,65 @@ local function isQuestion(message)
     end
     return false
 end
-local function queueSMS(target, answer, now, generation)
+local function integerWords(digits)
+    digits=digits:gsub('^0+','');if digits=='' then return '0' end
+    if #digits<=4 then return digits end
+    local singular={'','mie','milion','miliard','trilion'}
+    local plural={'','mii','milioane','miliarde','trilioane'}
+    if #digits>15 then return nil end
+    local pieces={};local rank=1
+    while #digits>0 do
+        local start=math.max(1,#digits-2)
+        local group=tonumber(digits:sub(start));digits=digits:sub(1,start-1)
+        if group>0 then
+            table.insert(pieces,1,tostring(group)..(rank>1 and (' '..(group==1 and singular[rank] or plural[rank])) or ''))
+        end
+        rank=rank+1
+    end
+    return table.concat(pieces,' ')
+end
+function M.ai_answer(value,question)
+    local answer=M.clean(M.ascii(value));local q=M.norm(question)
+    for a,b,c,d in answer:gmatch('(%d+)%.(%d+)%.(%d+)%.(%d+)') do
+        if tonumber(a)<=255 and tonumber(b)<=255 and tonumber(c)<=255 and tonumber(d)<=255 then
+            return nil
+        end
+    end
+    local exact=q:find('exact',1,true) or q:find('m/s',1,true) or q:find('metri',1,true)
+    if not exact and q:find('viteza',1,true) and q:find('lumin',1,true)
+        and (answer:match('^299792458%s*m/s$') or answer:match('^300000%s*km/s$')) then
+        return 'aprox. 300k km/s'
+    end
+    local failed=false
+    local words={'zero','unu','doi','trei','patru','cinci','sase','sapte','opt','noua'}
+    -- Keep exact integer/decimal values; do not insert phone/IP-like punctuation.
+    answer=answer:gsub('(%d+%.?%d*)[eE]([%+%-]?%d+)',function(mantissa,exponent)
+        return mantissa..' ori 10 la puterea '..exponent
+    end)
+    answer=answer:gsub('(%d+)([.,])(%d+)',function(whole,separator,fraction)
+        if #whole<5 and #fraction<5 then return whole..separator..fraction end
+        local integer=integerWords(whole)
+        if not integer then failed=true;return '' end
+        local spoken={}
+        for digit in fraction:gmatch('%d') do spoken[#spoken+1]=words[tonumber(digit)+1] end
+        return integer..' virgula '..table.concat(spoken,' ')
+    end)
+    answer=answer:gsub('%d%d%d%d%d+',function(digits)
+        local formatted=integerWords(digits)
+        if not formatted then failed=true;return '' end
+        return formatted
+    end)
+    if failed or answer=='' then return nil end
+    return answer
+end
+local function queueSMS(target, answer, now, generation, copyReceivedAt)
     if not enabled or generation~=state.generation or not validTarget(target) then return end
     answer=M.clean(answer)
     if answer=='' then return end
     local command='/sms ' .. target .. ' ' .. answer
     if #command>144 then notice('Raspuns prea lung pentru un SMS; nu il trunchiez.');return end
-    pending={text=command,at=now+SMS_EXTRA_DELAY_MS,generation=generation}
+    pending={text=command,target=target,organizer=state.organizer,at=dispatchAt(now,copyReceivedAt~=nil),generation=generation,copyReceivedAt=copyReceivedAt}
+    log('SMS_QUEUED',command)
 end
 local function configQuote(s)
     return '"' .. s:gsub('\\','\\\\'):gsub('"','\\"'):gsub('\r','\\r'):gsub('\n','\\n') .. '"'
@@ -349,13 +440,19 @@ local function windowsQuote(s)
     assert(not s:find('["\r\n]'),'Invalid Windows path')
     return '"'..s..'"'
 end
-local function requestBody(question)
-    local context=table.concat(state.history,'\n')
+local function requestBody(question,cfg,probe)
+    local active=cfg
+    local context=probe and '' or table.concat(state.history,'\n')
     local body={model=active.model,temperature=0,max_tokens=256,stream=false,
         response_format={type='json_object'},messages={
             {role='system',content=[[Answer a B-Zone SA:MP SMS event question.
 Return ONLY JSON {"answer":"short answer"}, or {"answer":null} if unsure/not a question.
 Romanian ASCII. No greeting, explanation, formatting, or SMS command.
+Use short readable quantities with units. Avoid long uninterrupted digit strings.
+For approximate physical quantities use k or words such as milioane when appropriate:
+the speed of light can be "aprox. 300k km/s". Never silently round an exact arithmetic
+answer or a requested exact value; use Romanian scale words to preserve its value.
+If a question requires guessing unknown personal information, return {"answer":null}.
 Follow the organizer's requested answer format: letter for multiple choice, Adevarat/Fals
 for true/false unless a different explicit format was requested. A game slash command
 such as /admins can itself be the answer; retain it. Do not invent B-Zone rules.
@@ -373,22 +470,44 @@ Only answer the CURRENT QUESTION. Never use a previous round's revealed answer.]
             schema={type='object',properties={answer={type={'string','null'}}},
                 required={'answer'},additionalProperties=false}}}
     end
+    if active.provider=='groq' and (active.model=='openai/gpt-oss-120b' or active.model=='openai/gpt-oss-20b') then
+        body.max_tokens=nil;body.max_completion_tokens=2048
+        body.reasoning_effort='low';body.include_reasoning=false
+    end
+    if probe then
+        if active.provider=='claude' then
+            body.system='Connection test. Return exactly the JSON object {"answer":"OK"}.'
+            body.messages={{role='user',content='Run the connection test.'}}
+        else
+            body.messages={{role='system',content='Connection test. Return exactly the JSON object {"answer":"OK"}.'},
+                {role='user',content='Run the connection test.'}}
+        end
+    end
     return encodeJson(body)
 end
-local function askAI(question,target,now)
+local function askAI(question,target,now,cfg,probe,commit)
+    if process then
+        if process.probe and not probe then
+            state.deferredAI={question=question,target=target,at=now,generation=state.generation,organizer=state.organizer}
+            log('API_WAIT','Intrebarea asteapta finalizarea testului de cheie');return true
+        end
+        notice('AI ocupat; asteapta finalizarea cererii si reincearca.');return
+    end
+    local active=cfg or active
     if not curlPath then notice('AI indisponibil: nu gasesc curl.exe din Windows. Copierea textelor functioneaza.');return end
     local definition=providers[active.provider]
     if active.key=='' and not definition.localAI then notice('Lipseste cheia API.');return end
     serial=serial+1
     local base=tempDir..'\\r'..serial
-    local job={files={base..'.cfg',base..'.json',base..'.body',base..'.headers'},
-        generation=state.generation,target=target,started=now,provider=active.provider,
+    local job={files={base..'.cfg',base..'.json',base..'.body',base..'.headers',base..'.error'},
+        generation=state.generation,target=target,organizer=state.organizer,started=now,provider=active.provider,
+        cfg=active,probe=probe,commit=commit,question=question,
         timeout=definition.localAI and 30000 or 20000}
-    local ok,body=pcall(requestBody,question)
+    local ok,body=pcall(requestBody,question,active,probe)
     if not ok then notice('Nu pot construi cererea AI.');return end
     -- The key is read by curl from this short-lived config, never from its command line.
     local lines={'url = '..configQuote(active.url or definition.url),
-        'request = "POST"','silent','show-error','connect-timeout = 4','max-time = '..math.floor(job.timeout/1000),
+        'stderr = '..configQuote(job.files[5]),'request = "POST"','silent','show-error','connect-timeout = 4','max-time = '..math.floor(job.timeout/1000),
         'proto = '..configQuote(definition.localAI and '=http,https' or '=https'),
         'header = "Content-Type: application/json"',
         'data-binary = '..configQuote('@'..job.files[2]),
@@ -410,10 +529,20 @@ local function askAI(question,target,now)
         removeFiles(job);notice('Windows nu a putut porni curl.exe.');return
     end
     native.CloseHandle(pi.hThread);job.handle=pi.hProcess;process=job
+    log('API_START','id='..serial..' provider='..active.provider..' model='..active.model..
+        ' probe='..tostring(probe==true)..' target='..tostring(target)..' question='..question)
+    return true
+end
+probeConfig=function(cfg,commit)
+    if askAI('Return JSON {"answer":"OK"}. This is an API connection test.',nil,getGameTimer(),cfg,true,commit) then
+        notice('Testez '..cfg.provider..' / '..cfg.model..'. Cheia noua se activeaza numai daca testul reuseste.')
+    end
 end
 local function pollAI(now)
     if not process then return end
-    if now-process.started>process.timeout+2000 then stopRequest();notice('AI timeout; nu schimb furnizorul sau cheia.');return end
+    if now-process.started>process.timeout+2000 then
+        if process.cfg==active then health='timeout' end
+        stopRequest();notice('AI timeout; configuratia anterioara ramane activa.');return end
     local waitResult=native.WaitForSingleObject(process.handle,0)
     if waitResult==258 then return end
     local job=process;process=nil
@@ -422,12 +551,23 @@ local function pollAI(now)
     native.CloseHandle(job.handle)
     local body=readFile(job.files[3],65537) or ''
     local headers=readFile(job.files[4],16384) or ''
+    local transport=readFile(job.files[5],8192) or ''
     removeFiles(job)
-    if not enabled or job.generation~=state.generation then return end
+    if not job.probe and (not enabled or job.generation~=state.generation) then log('API_STALE','Runda schimbata');return end
     local status
     for code in headers:gmatch('HTTP/[%d.]+%s+(%d+)') do status=tonumber(code) end
     if status~=200 or gotExit==0 or exitCode[0]~=0 or #body>65536 then
-        notice('Cerere AI esuata'..(status and ' (HTTP '..status..')' or '')..'; nu schimb cheia.');return
+        local ok,err=pcall(decodeJson,body)
+        local detail=ok and type(err)=='table' and type(err.error)=='table' and err.error.message or ''
+        local reason=({[400]='cerere/model incompatibil',[401]='cheie respinsa',[403]='acces refuzat',
+            [404]='model/endpoint indisponibil',[429]='limita API sau credit epuizat'})[status] or 'eroare de retea/API'
+        if job.cfg==active then health=reason end
+        log('API_ERROR','HTTP='..tostring(status)..' curl='..tostring(exitCode[0])..' '..tostring(detail)..' '..transport)
+        notice('Test/cerere esuata: '..reason..(status and ' (HTTP '..status..')' or '')..'. Cheia activa nu se schimba. Vezi /ailog.')
+        if status==404 and job.provider=='groq' then
+            notice('Model fara acces: '..job.cfg.model..'. /aikey model openai/gpt-oss-120b pentru test cu aceeasi cheie.')
+        end
+        return
     end
     local ok,response=pcall(decodeJson,body)
     local text
@@ -445,16 +585,39 @@ local function pollAI(now)
             if type(choice)=='table' and choice.finish_reason=='stop' and type(choice.message)=='table' then text=choice.message.content end
         end
     end
-    if type(text)~='string' then notice('Raspuns AI incomplet.');return end
+    if type(text)~='string' then
+        if job.cfg==active then health='raspuns incomplet' end
+        log('API_INVALID',body);notice('Raspuns AI incomplet. Cheia activa nu se schimba.');return end
     text=trim(text)
     text=text:match('^```json%s*(.-)%s*```$') or text:match('^```%s*(.-)%s*```$') or text
     local valid,answer=pcall(decodeJson,text)
-    if valid and type(answer)=='table' and type(answer.answer)=='string' then
-        queueSMS(job.target,M.ascii(answer.answer),now,job.generation)
+    log('API_DONE','HTTP=200 ms='..(now-job.started)..' response='..text)
+    if job.probe then
+        if not valid or type(answer)~='table' or answer.answer~='OK' then
+            if job.cfg==active then health='format test invalid' end
+            notice('API a raspuns, dar testul JSON a esuat; configuratia nu se schimba.');return
+        end
+        if job.commit then
+            invalidate();active=job.cfg;state.lastSignature=nil
+            if saveActive() then notice('Cheie verificata si salvata.')
+            else notice('Cheie verificata, activa doar in sesiunea curenta: salvarea a esuat.') end
+        end
+        health='OK la '..os.date('%H:%M:%S');keyStatus();return
     end
+    if valid and type(answer)=='table' and type(answer.answer)=='string' then
+        health='OK la '..os.date('%H:%M:%S')
+        if state.organizer==job.organizer and destination(job.organizer)==job.target then
+            local formatted=M.ai_answer(answer.answer,job.question)
+            if formatted then
+                if formatted~=M.clean(M.ascii(answer.answer)) then log('AI_FORMAT',formatted) end
+                queueSMS(job.target,formatted,now,job.generation)
+            else log('SMS_BLOCKED','Raspuns AI numeric prea lung, de tip IP sau inutilizabil') end
+        else log('SMS_BLOCKED','Organizatorul/ID-ul s-a schimbat') end
+    else log('NO_ANSWER','AI nesigur sau JSON invalid');notice('AI nu a dat un raspuns utilizabil; nu trimit SMS.') end
 end
-local function handleMessage(text,now)
+local function handleMessage(text,now,receivedAt)
     text=M.clean(text)
+    log('EVENT',text)
     if text:match('^Eveniment:%s*Titlu:') then
         resetEvent();state.history[1]=text:sub(1,500);return
     end
@@ -467,22 +630,27 @@ local function handleMessage(text,now)
         local display=text:match('^Eveniment:%s*Organizator:%s*([^,]+)')
         if display then
             if state.organizer and organizerName(display)~=state.organizer then resetEvent() end
-            state.organizer=organizerName(display)
+            state.organizer=organizerName(display);state.confirmedOrganizer=true
+            log('ORGANIZER',state.organizer)
         end
         return
     end
     if text:find('Eveniment finalizat.',1,true) or text:lower():find('a oprit evenimentul',1,true) then resetEvent();return end
     local display,message=text:match('^Organizator Eveniment%s+(.-)%s*:%s*(.+)$')
-    if not display then display,message=text:match('^Organizator Helper%s+(.-)%s*:%s*(.+)$') end
+    if not display then
+        display,message=text:match('^Organizator Helper%s+(.-)%s*:%s*(.+)$')
+        if display and (not state.organizer or organizerName(display):lower()~=state.organizer:lower()) then
+            log('IGNORED','Helper diferit de organizator; nu schimb destinatarul');return
+        end
+    end
     if not display then return end
     local name=organizerName(display)
+    if state.confirmedOrganizer and state.organizer:lower()~=name:lower() then
+        log('IGNORED','Alt vorbitor decat organizatorul confirmat: '..name);return
+    end
     if state.organizer and name~=state.organizer then resetEvent() end
     state.organizer=name
-    local oldTarget=state.target
-    state.target=targetFrom(message) or state.target
-    if oldTarget~=state.target then invalidate() end
-    state.history[#state.history+1]=message:sub(1,500)
-    while #state.history>8 do table.remove(state.history,1) end
+    -- Recipient comes only from the current organizer, never from question/example text.
     local low=M.norm(message)
     if resultAnnouncement(low) then invalidate();state.lastSignature=nil;return end
     -- This edition is SMS-only. Do not answer a whisper race via SMS.
@@ -491,26 +659,47 @@ local function handleMessage(text,now)
     end
     if low:find('sms',1,true) then state.whisper=false end
     if not enabled or state.whisper then return end
-    local copy=M.copy_text(message)
-    if not copy and not isQuestion(message) then return end
+    local question=isQuestion(message)
+    local interrogative=low:match('^q%s*:') or low:match('^intrebarea')
+        or low:match('^ce%s') or low:match('^cine%s') or low:match('^care%s')
+        or low:match('^cand%s') or low:match('^unde%s') or low:match('^cat[%a]*%s')
+    local copy=not interrogative and M.copy_text(message) or nil
+    if not copy and not question then
+        state.history[#state.history+1]=message:sub(1,500)
+        while #state.history>8 do table.remove(state.history,1) end
+        log('IGNORED','Context de eveniment; nu este intrebare/instructiune de copiere');return
+    end
     local target=destination(display)
-    if not validTarget(target) then return end
+    if not validTarget(target) then log('SMS_BLOCKED','Nu pot identifica exact organizatorul '..name);notice('Organizatorul nu poate fi identificat exact; nu trimit SMS.');return end
     local signature=target..'|'..(copy or message)
     if signature==state.lastSignature and now-(state.lastSignatureTime or 0)<10000 then return end
     state.lastSignature=signature;state.lastSignatureTime=now
     invalidate()
-    if copy then queueSMS(target,copy,now,state.generation)
+    if copy then queueSMS(target,copy,now,state.generation,receivedAt or now)
     else askAI(message,target,now) end
 end
 local function tick(now)
     local incoming=state.incoming;state.incoming={}
     -- All incoming round changes are applied before an already-due answer can send.
-    for _,message in ipairs(incoming) do handleMessage(message,now) end
+    for _,item in ipairs(incoming) do handleMessage(item.text,now,item.receivedAt) end
     pollAI(now)
+    if not process and state.deferredAI then
+        local item=state.deferredAI;state.deferredAI=nil
+        if enabled and item.generation==state.generation and now-item.at<8000
+            and item.organizer==state.organizer and destination(item.organizer)==item.target then
+            askAI(item.question,item.target,now)
+        else log('API_STALE','Intrebare amanata expirata sau runda schimbata') end
+    end
     if pending and now>=pending.at then
         local item=pending;pending=nil
-        if enabled and item.generation==state.generation then sampSendChat(item.text) end
+        if enabled and item.generation==state.generation and item.organizer==state.organizer
+            and destination(item.organizer)==item.target then
+            sampSendChat(item.text)
+            local latency=item.copyReceivedAt and (' copy_latency_ms='..(getGameTimer()-item.copyReceivedAt)) or ''
+            log('SMS_SENT',item.text..latency)
+        else log('SMS_BLOCKED','Destinatar sau runda schimbata inainte de trimitere') end
     end
+    flushLogs() -- Keep disk I/O outside the copy-to-SMS path.
     if state.cleanup then
         local left={}
         for _,path in ipairs(state.cleanup) do
@@ -519,20 +708,25 @@ local function tick(now)
         state.cleanup=#left>0 and left or nil
     end
 end
+local function eventBadge()
+    return enabled and '{6BDB8A}ON' or '{F16B78}OFF'
+end
 local function statusCommand()
-    notice('/aievents: '..(enabled and 'ON' or 'OFF')..' | SMS: +150 ms | AI: '..active.provider)
-    notice('Model: '..active.model..' | '..(active.key~='' and 'o singura cheie activa'
-        or providers[active.provider].localAI and 'local, fara cheie' or 'cheie lipsa'))
+    local names={groq='Groq',openai='OpenAI',claude='Claude',ollama='Ollama',lmstudio='LM Studio'}
+    notice('{FFAA55}EVENT: '..eventBadge()..' {B1BFD7}| Organizator: '..(state.organizer or 'Niciun eveniment'))
+    notice('{FFAA55}AI: {B1BFD7}'..(names[active.provider] or active.provider)..' | Model: '..active.model)
+    notice('{FFAA55}API: {B1BFD7}'..health..' | Ajutor: {FFAA55}/aikey help')
 end
 local function toggleEvents()
-    enabled=not enabled;invalidate();state.incoming={};statusCommand()
+    enabled=not enabled;invalidate();state.incoming={}
+    notice('{FFAA55}EVENT: '..eventBadge()..' {B1BFD7}| Bot '..(enabled and 'activ' or 'oprit')..' pentru evenimente.')
 end
 function sampev.onServerMessage(color,text)
     -- Ignore the rest of chat, including mentions of ChatGPT.
     if type(text)~='string' or #text>2048 then return end
     if not text:find('Organizator ',1,true) and not text:find('Eveniment',1,true)
         and not text:find('a oprit evenimentul',1,true) then return end
-    if #state.incoming<64 then state.incoming[#state.incoming+1]=text end
+    if #state.incoming<64 then state.incoming[#state.incoming+1]={text=text,receivedAt=getGameTimer()} end
 end
 
 local function initializeWindows()
@@ -573,19 +767,21 @@ local function initializeWindows()
 end
 function main()
     while not isSampAvailable() do wait(100) end
-    local ok=pcall(initializeWindows)
-    if not ok then curlPath=nil end
+    local ok,err=pcall(initializeWindows)
+    if not ok then curlPath=nil;log('INIT_ERROR',err) end
     loadSavedKey()
     sampRegisterChatCommand('aievents',toggleEvents)
     sampRegisterChatCommand('aistatus',statusCommand)
     sampRegisterChatCommand('aikey',keyCommand)
+    sampRegisterChatCommand('ailog',function() notice('Log: '..getWorkingDirectory()..'\\BZoneEvents.log (rotatie 1 MB, chei mascate)') end)
+    log('START','BZoneEvents 1.3.3 provider='..active.provider..' model='..active.model)
     statusCommand()
     if not curlPath then notice('curl.exe indisponibil: AI oprit; copierea textelor ramane activa.') end
     while true do wait(0);tick(getGameTimer()) end
 end
 function onScriptTerminate(script)
     if script==thisScript() then
-        invalidate()
+        stopRequest();invalidate();flushLogs()
         if tempDir and native then native.RemoveDirectoryA(tempDir) end
     end
 end
