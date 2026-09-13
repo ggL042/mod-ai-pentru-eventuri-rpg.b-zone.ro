@@ -2,7 +2,7 @@ script_name('BZone Events Windows')
 script_author('chelie / Codex')
 script_version('1.3.3')
 
--- Windows 10/11 + MoonLoader + SAMP.Lua. One active provider/key, no rotation.
+-- Windows 10/11 + MoonLoader + SAMP.Lua. One active provider/key, no rotation..
 local API_KEY = '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'
 local MODEL = 'openai/gpt-oss-120b'
 local dispatchAt=(function()
