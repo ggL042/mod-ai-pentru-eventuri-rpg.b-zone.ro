@@ -197,8 +197,6 @@ BZoneEvents_AI.json
 
 ### 🎯 B-Zone Event AI
 
-**Descarci → `/aievents` → gata.**
-
 RPG.B-Zone.ro
 
 </div>
