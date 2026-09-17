@@ -23,6 +23,10 @@ Cea mai simplă variantă este să descarci direct MP-ul complet, cu modul și t
 
 Extrage arhiva și pornește jocul.
 
+> Varianta completă vine cu **o cheie Groq configurată implicit**, deci modul poate fi folosit direct fără să-ți creezi propria cheie API.
+
+> Dacă cheia implicită ajunge la limită sau nu mai funcționează, o poți înlocui oricând cu propria cheie Groq folosind `/aikey`.
+
 > Dacă folosești varianta completă, nu mai trebuie să instalezi manual MoonLoader, SAMP.Lua sau cURL.
 
 ---
@@ -133,13 +137,25 @@ GTA San Andreas\
 | `/aikey help`             | ❓ Afișează comenzile disponibile pentru configurarea AI           |
 | `/aikey model NUME_MODEL` | 🧠 Schimbă modelul AI folosit                                     |
 
-### 🔑 Configurarea providerului
+### 🔑 Cheia Groq implicită
 
-#### Groq
+Modul vine deja configurat cu **o cheie Groq default**, deci în mod normal este suficient să pornești:
+
+```text
+/aievents
+```
+
+Dacă vrei să folosești propria cheie Groq:
 
 ```text
 /aikey groq CHEIA_TA_API
 ```
+
+Poți crea gratuit o cheie aici:
+
+https://console.groq.com/keys
+
+### 🔄 Alți provideri AI
 
 #### OpenAI
 
@@ -152,8 +168,6 @@ GTA San Andreas\
 ```text
 /aikey claude CHEIA_TA_API
 ```
-
-Cheia API poate fi introdusă direct prin comandă sau folosind clipboard-ul, în funcție de configurare.
 
 ### 🖥️ Modele locale
 
@@ -183,7 +197,7 @@ BZoneEvents_AI.json
 
 ### 🎯 B-Zone Event AI
 
-**Instalezi → configurezi API-ul → `/aievents` → gata.**
+**Descarci → `/aievents` → gata.**
 
 RPG.B-Zone.ro
 
