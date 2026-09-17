@@ -125,7 +125,66 @@ GTA San Andreas\
 
 ## 🎮 6. Comenzile modului
 
-| Comandă     | Ce face                                          |
-| ----------- | ------------------------------------------------ |
-| `/aievents` | ✅ Pornește sau oprește automatizarea eventurilor |
-| `/aistatus` | 📊 Arată stat                                    |
+| Comandă                   | Ce face                                                           |
+| ------------------------- | ----------------------------------------------------------------- |
+| `/aievents`               | ✅ Pornește sau oprește automatizarea eventurilor                  |
+| `/aistatus`               | 📊 Arată statusul modului, providerul AI activ și modelul folosit |
+| `/aikey`                  | 🔑 Configurează providerul AI, cheia API sau modelul              |
+| `/aikey help`             | ❓ Afișează comenzile disponibile pentru configurarea AI           |
+| `/aikey model NUME_MODEL` | 🧠 Schimbă modelul AI folosit                                     |
+
+### 🔑 Configurarea providerului
+
+#### Groq
+
+```text
+/aikey groq CHEIA_TA_API
+```
+
+#### OpenAI
+
+```text
+/aikey openai CHEIA_TA_API
+```
+
+#### Claude
+
+```text
+/aikey claude CHEIA_TA_API
+```
+
+Cheia API poate fi introdusă direct prin comandă sau folosind clipboard-ul, în funcție de configurare.
+
+### 🖥️ Modele locale
+
+Modul suportă și provideri locali:
+
+```text
+/aikey ollama NUME_MODEL
+```
+
+```text
+/aikey local NUME_MODEL
+```
+
+```text
+/aikey lmstudio NUME_MODEL
+```
+
+Configurația este salvată automat în:
+
+```text
+BZoneEvents_AI.json
+```
+
+---
+
+<div align="center">
+
+### 🎯 B-Zone Event AI
+
+**Instalezi → configurezi API-ul → `/aievents` → gata.**
+
+RPG.B-Zone.ro
+
+</div>
