@@ -1,6 +1,5 @@
 script_name('BZone Events Windows')
 script_author('chelie / Codex')
-script_version('1.3.3')
 
 -- Windows 10/11 + MoonLoader + SAMP.Lua. One active provider/key, no rotation..
 local API_KEY = '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'
@@ -713,7 +712,7 @@ local function eventBadge()
 end
 local function statusCommand()
     local names={groq='Groq',openai='OpenAI',claude='Claude',ollama='Ollama',lmstudio='LM Studio'}
-    notice('{FFAA55}EVENT: '..eventBadge()..' {B1BFD7}| Organizator: '..(state.organizer or 'Niciun eveniment'))
+    notice('{FFAA55}EVENT: '..eventBadge()..' {B1BFD7}| Organizator: '..(state.organizer or 'Niciun eveniment')..' | made by Freddie')
     notice('{FFAA55}AI: {B1BFD7}'..(names[active.provider] or active.provider)..' | Model: '..active.model)
     notice('{FFAA55}API: {B1BFD7}'..health..' | Ajutor: {FFAA55}/aikey help')
 end
@@ -774,7 +773,7 @@ function main()
     sampRegisterChatCommand('aistatus',statusCommand)
     sampRegisterChatCommand('aikey',keyCommand)
     sampRegisterChatCommand('ailog',function() notice('Log: '..getWorkingDirectory()..'\\BZoneEvents.log (rotatie 1 MB, chei mascate)') end)
-    log('START','BZoneEvents 1.3.3 provider='..active.provider..' model='..active.model)
+    log('START','BZoneEvents provider='..active.provider..' model='..active.model)
     statusCommand()
     if not curlPath then notice('curl.exe indisponibil: AI oprit; copierea textelor ramane activa.') end
     while true do wait(0);tick(getGameTimer()) end
