@@ -1,15 +1,6 @@
-<div align="center">
-
 # 🤖 B-Zone Event AI
 
 ### AI automat pentru eventurile de pe RPG.B-Zone.ro
-
-![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows)
-![SA-MP](https://img.shields.io/badge/SA--MP-B--Zone-orange)
-![MoonLoader](https://img.shields.io/badge/MoonLoader-Lua-blueviolet)
-![AI](https://img.shields.io/badge/AI-Groq-success)
-
-</div>
 
 ---
 
@@ -23,11 +14,22 @@ Cea mai simplă variantă este să descarci direct MP-ul complet, cu modul și t
 
 Extrage arhiva și pornește jocul.
 
-> Varianta completă vine cu **o cheie Groq configurată implicit**, deci modul poate fi folosit direct fără să-ți creezi propria cheie API.
+> Varianta completă vine cu o cheie Groq configurată implicit, deci modul poate fi folosit direct fără să-ți creezi propria cheie API.
 
 > Dacă cheia implicită ajunge la limită sau nu mai funcționează, o poți înlocui oricând cu propria cheie Groq folosind `/aikey`.
 
 > Dacă folosești varianta completă, nu mai trebuie să instalezi manual MoonLoader, SAMP.Lua sau cURL.
+
+---
+
+## ⚠️ Setări necesare în joc
+
+Pentru ca modul să poată citi și interpreta corect mesajele din chat:
+
+* 🇷🇴 **Limba jocului trebuie să fie setată pe Română.**
+* 🕒 **`/timestamp` trebuie să fie pe OFF.**
+
+Dacă aceste setări nu sunt respectate, modul poate să nu detecteze corect organizatorul, întrebările sau mesajele eventului.
 
 ---
 
@@ -64,7 +66,7 @@ GTA San Andreas\moonloader\
 
 ## 📚 4. Instalarea SAMP.Lua
 
-Descarcă **SAMP.Lua** și copiază folderul:
+Descarcă SAMP.Lua și copiază folderul:
 
 ```text
 samp
@@ -88,7 +90,7 @@ GTA San Andreas\moonloader\lib\samp\events.lua
 
 Pe Windows 10 / 11, `curl.exe` există de obicei deja în sistem.
 
-Pentru ca modul să aibă propriul cURL și să nu depindă de instalarea Windows, descarcă versiunea **Windows x64**:
+Pentru ca modul să aibă propriul cURL și să nu depindă de instalarea Windows, descarcă versiunea Windows x64:
 
 ### 👉 https://curl.se/windows/
 
@@ -123,8 +125,6 @@ GTA San Andreas\
             └── events.lua
 ```
 
-> `curl.exe` nu trebuie adăugat manual în PATH.
-
 ---
 
 ## 🎮 6. Comenzile modului
@@ -139,7 +139,7 @@ GTA San Andreas\
 
 ### 🔑 Cheia Groq implicită
 
-Modul vine deja configurat cu **o cheie Groq default**, deci în mod normal este suficient să pornești:
+Modul vine deja configurat cu o cheie Groq default, deci în mod normal este suficient să pornești:
 
 ```text
 /aievents
@@ -193,10 +193,6 @@ BZoneEvents_AI.json
 
 ---
 
-<div align="center">
-
 ### 🎯 B-Zone Event AI
 
 RPG.B-Zone.ro
-
-</div>
