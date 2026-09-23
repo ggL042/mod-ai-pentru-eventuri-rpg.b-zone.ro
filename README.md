@@ -10,14 +10,13 @@
 
 Cea mai simplă variantă este să descarci direct MP-ul complet, cu modul și toate dependențele deja integrate:
 
-### 👉 [Descarcă Freddie SAMP + B-Zone Event AI](https://drive.google.com/file/d/1t7wgi5iUDtNtg7M2PwYh--qPBcIwAstZ/view?usp=sharing)
+### 👉 [Descarcă Freddie SAMP + B-Zone Event AI](https://sharemods.com/ffj6ql604kxh/AiEventMOD_Freddie.rar.html)
 
 Extrage arhiva și pornește jocul.
 
 > Varianta completă vine cu o cheie Groq configurată implicit, deci modul poate fi folosit direct fără să-ți creezi propria cheie API.
 
 > Dacă cheia implicită ajunge la limită sau nu mai funcționează, o poți înlocui oricând cu propria cheie Groq folosind `/aikey`.
-
 > Dacă folosești varianta completă, nu mai trebuie să instalezi manual MoonLoader, SAMP.Lua sau cURL.
 
 ---
@@ -37,14 +36,14 @@ Dacă aceste setări nu sunt respectate, modul poate să nu detecteze corect org
 
 Dacă ai deja propriul GTA San Andreas / SA-MP, ai nevoie de următoarele:
 
-| Componentă        | Download                            |
-| ----------------- | ----------------------------------- |
-| 🎮 SA-MP / B-Zone | https://www.b-zone.ro/samp          |
-| 🌙 MoonLoader     | https://www.blast.hk/moonloader/    |
-| ⚙️ SAMPFUNCS      | https://www.blast.hk/threads/17/    |
-| 📚 SAMP.Lua       | https://github.com/THE-FYP/SAMP.Lua |
-| 🌐 cURL Windows   | https://curl.se/windows/            |
-| 🤖 Groq API Key   | https://console.groq.com/keys       |
+| Componentă        | Download                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| 🎮 SA-MP / B-Zone | https://www.b-zone.ro/samp                                                          |
+| 🌙 MoonLoader     | https://moduri.ro/moonloader/                                                       |
+| ⚙️ SAMPFUNCS      | https://libertycity.net/files/gta-san-andreas/151974-sampfuncs-v.-5.4.1.-final.html |
+| 📚 SAMP.Lua       | https://github.com/THE-FYP/SAMP.Lua                                                 |
+| 🌐 cURL Windows   | https://curl.se/windows/                                                            |
+| 🤖 Groq API Key   | https://console.groq.com/keys                                                       |
 
 ---
 
@@ -196,3 +195,5 @@ BZoneEvents_AI.json
 ### 🎯 B-Zone Event AI
 
 RPG.B-Zone.ro
+
+**Made by Freddie**
